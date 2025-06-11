@@ -52,9 +52,28 @@ git clone <repository-url>
 cd retail-etl-dashboard
 ```
 
-### 2. Environment Configuration (Optional)
+### 2. Environment Configuration (Required)
 
-For custom credentials, create a `.env` file in the project root. The application works with default credentials out of the box.
+**IMPORTANT: You must create a `.env` file before running the application.**
+
+Copy the example file and configure your credentials:
+
+```bash
+cp .env.example .env
+# Edit .env with your secure passwords and keys
+```
+
+**Required environment variables:**
+- `POSTGRES_PASSWORD` - PostgreSQL database password
+- `MYSQL_ROOT_PASSWORD` - MySQL root password  
+- `AIRFLOW_FERNET_KEY` - 32-byte base64 encoded key for Airflow encryption
+- `AIRFLOW_SECRET_KEY` - Secret key for Airflow web UI
+- `AIRFLOW_WWW_USER_PASSWORD` - Admin password for Airflow UI
+
+**Generate secure Fernet key:**
+```bash
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
 
 ### 3. Deploy Services
 

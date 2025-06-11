@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+
+{% block title %}Top Products - Retail Sales Dashboard{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h2>Top Selling Products</h2>
+            </div>
+            <div class="card-body">
+                <p class="lead">
+                    Displaying the top selling products based on total sales amount.
+                    These insights help identify the most profitable products.
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Top Products Chart -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">Top Products by Sales Amount</div>
+            <div class="card-body">
+                <canvas id="topProductsChart"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Top Products Table -->
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">Top Products Data</div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Product ID</th>
+                                <th>Total Quantity</th>
+                                <th>Total Sales Amount</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for i, item in enumerate(data) %}
+                            <tr>
+                                <td>{{ i + 1 }}</td>
+                                <td>{{ item.product_id }}</td>
+                                <td>{{ item.total_quantity }}</td>
+                                <td>${{ item.total_sale_amount }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Add this to prevent linter errors with the Jinja template
+        /* eslint-disable */
+        const data = JSON.parse('{{ data|tojson|safe }}');
+        /* eslint-enable */
+        
+        // Extract product IDs and values for charts
+        const productIds = data.map(item => `Product ${item.product_id}`);
+        const salesAmounts = data.map(item => item.total_sale_amount);
+        
+        // Create a horizontal bar chart for top products
+        const topCtx = document.getElementById('topProductsChart').getContext('2d');
+        new Chart(topCtx, {
+            type: 'bar',
+            data: {
+                labels: productIds,
+                datasets: [{
+                    label: 'Sales Amount ($)',
+                    data: salesAmounts,
+                    backgroundColor: 'rgba(75, 192, 192, 0.6)',
+                    borderColor: 'rgba(75, 192, 192, 1)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                scales: {
+                    x: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+    });
+</script>
+{% endblock %} 

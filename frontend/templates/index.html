@@ -1,0 +1,163 @@
+{% extends "base.html" %}
+
+{% block title %}Retail Sales Dashboard{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h2>Retail Sales Dashboard</h2>
+            </div>
+            <div class="card-body">
+                <p class="lead">
+                    This dashboard displays the aggregated sales data from both online and in-store sales.
+                    The data is processed using an ETL pipeline with Apache Airflow.
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Summary Cards -->
+<div class="row mb-4">
+    <div class="col-md-4">
+        <div class="card text-white bg-primary">
+            <div class="card-body">
+                <h5 class="card-title">Total Products</h5>
+                <p class="card-text display-4">{{ data|length }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card text-white bg-success">
+            <div class="card-body">
+                <h5 class="card-title">Total Quantity Sold</h5>
+                <p class="card-text display-4">{{ total_quantity }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card text-white bg-info">
+            <div class="card-body">
+                <h5 class="card-title">Total Sales Amount</h5>
+                <p class="card-text display-4">${{ total_amount }}</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Charts -->
+<div class="row mb-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">Sales by Product</div>
+            <div class="card-body">
+                <canvas id="salesChart"></canvas>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">Quantity by Product</div>
+            <div class="card-body">
+                <canvas id="quantityChart"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Data Table -->
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">Sales Data</div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>Product ID</th>
+                                <th>Total Quantity</th>
+                                <th>Total Sales Amount</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for item in data %}
+                            <tr>
+                                <td>{{ item.product_id }}</td>
+                                <td>{{ item.total_quantity }}</td>
+                                <td>${{ item.total_sale_amount }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        /* eslint-disable */
+        const data = JSON.parse('{{ data|tojson|safe }}');
+        /* eslint-enable */
+        
+        // Extract product IDs and values for charts
+        const productIds = data.map(item => `Product ${item.product_id}`);
+        const salesAmounts = data.map(item => item.total_sale_amount);
+        const quantities = data.map(item => item.total_quantity);
+        
+        // Sales Chart
+        const salesCtx = document.getElementById('salesChart').getContext('2d');
+        new Chart(salesCtx, {
+            type: 'bar',
+            data: {
+                labels: productIds,
+                datasets: [{
+                    label: 'Sales Amount ($)',
+                    data: salesAmounts,
+                    backgroundColor: 'rgba(54, 162, 235, 0.6)',
+                    borderColor: 'rgba(54, 162, 235, 1)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+        
+        // Quantity Chart
+        const quantityCtx = document.getElementById('quantityChart').getContext('2d');
+        new Chart(quantityCtx, {
+            type: 'bar',
+            data: {
+                labels: productIds,
+                datasets: [{
+                    label: 'Quantity Sold',
+                    data: quantities,
+                    backgroundColor: 'rgba(255, 99, 132, 0.6)',
+                    borderColor: 'rgba(255, 99, 132, 1)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+    });
+</script>
+{% endblock %} 

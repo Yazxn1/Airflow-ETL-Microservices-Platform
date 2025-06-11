@@ -1,0 +1,176 @@
+version: "3"
+
+services:
+  # Database for source data
+  postgres:
+    image: postgres:13
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-retail_data}
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - etl-network
+
+  # Database for Airflow metadata
+  airflow-postgres:
+    image: postgres:13
+    environment:
+      POSTGRES_USER: ${AIRFLOW_USER:-airflow}
+      POSTGRES_PASSWORD: ${AIRFLOW_PASSWORD:-airflow}
+      POSTGRES_DB: airflow
+    volumes:
+      - airflow-postgres-data:/var/lib/postgresql/data
+    networks:
+      - etl-network
+
+  # Database for data warehouse
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-mysql}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-retail_data_warehouse}
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./init_mysql.sql:/docker-entrypoint-initdb.d/init_mysql.sql
+    networks:
+      - etl-network
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "mysqladmin",
+          "ping",
+          "-h",
+          "localhost",
+          "-u",
+          "root",
+          "-p${MYSQL_ROOT_PASSWORD:-mysql}",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Initialize Airflow
+  airflow-init:
+    image: apache/airflow:2.6.3
+    depends_on:
+      - airflow-postgres
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${AIRFLOW_USER:-airflow}:${AIRFLOW_PASSWORD:-airflow}@airflow-postgres/airflow
+      - AIRFLOW__CORE__FERNET_KEY=${AIRFLOW_FERNET_KEY:-9T9l0yMgGAgWtqY_GOX0j-_FTn3Xgvw6M5zzUgZYmtA=}
+      - AIRFLOW__CORE__LOAD_EXAMPLES=false
+      - AIRFLOW__WEBSERVER__SECRET_KEY=${AIRFLOW_SECRET_KEY:-a_very_secret_key}
+      - _AIRFLOW_WWW_USER_CREATE=true
+      - _AIRFLOW_WWW_USER_USERNAME=${AIRFLOW_WWW_USER_USERNAME:-admin}
+      - _AIRFLOW_WWW_USER_PASSWORD=${AIRFLOW_WWW_USER_PASSWORD:-admin}
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./data:/opt/airflow/data
+      - ./logs:/opt/airflow/logs
+    networks:
+      - etl-network
+    command: bash -c "airflow db init && airflow users create --username ${AIRFLOW_WWW_USER_USERNAME:-admin} --password ${AIRFLOW_WWW_USER_PASSWORD:-admin} --firstname Admin --lastname User --role Admin --email admin@example.com"
+
+  # Airflow webserver
+  airflow-webserver:
+    image: apache/airflow:2.6.3
+    depends_on:
+      - airflow-postgres
+      - airflow-init
+      - postgres
+      - mysql
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${AIRFLOW_USER:-airflow}:${AIRFLOW_PASSWORD:-airflow}@airflow-postgres/airflow
+      - AIRFLOW__CORE__FERNET_KEY=${AIRFLOW_FERNET_KEY:-9T9l0yMgGAgWtqY_GOX0j-_FTn3Xgvw6M5zzUgZYmtA=}
+      - AIRFLOW__CORE__LOAD_EXAMPLES=false
+      - AIRFLOW__WEBSERVER__SECRET_KEY=${AIRFLOW_SECRET_KEY:-a_very_secret_key}
+      - AIRFLOW_CONN_POSTGRES_CONN=postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-retail_data}
+      - AIRFLOW_CONN_MYSQL_CONN=mysql://root:${MYSQL_ROOT_PASSWORD:-mysql}@mysql:3306/${MYSQL_DATABASE:-retail_data_warehouse}
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./data:/opt/airflow/data
+      - ./logs:/opt/airflow/logs
+    ports:
+      - "8080:8080"
+    networks:
+      - etl-network
+    command: webserver
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+
+  # Airflow scheduler
+  airflow-scheduler:
+    image: apache/airflow:2.6.3
+    depends_on:
+      - airflow-postgres
+      - airflow-init
+      - airflow-webserver
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${AIRFLOW_USER:-airflow}:${AIRFLOW_PASSWORD:-airflow}@airflow-postgres/airflow
+      - AIRFLOW__CORE__FERNET_KEY=${AIRFLOW_FERNET_KEY:-9T9l0yMgGAgWtqY_GOX0j-_FTn3Xgvw6M5zzUgZYmtA=}
+      - AIRFLOW__CORE__LOAD_EXAMPLES=false
+      - AIRFLOW__WEBSERVER__SECRET_KEY=${AIRFLOW_SECRET_KEY:-a_very_secret_key}
+      - AIRFLOW_CONN_POSTGRES_CONN=postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-retail_data}
+      - AIRFLOW_CONN_MYSQL_CONN=mysql://root:${MYSQL_ROOT_PASSWORD:-mysql}@mysql:3306/${MYSQL_DATABASE:-retail_data_warehouse}
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./data:/opt/airflow/data
+      - ./logs:/opt/airflow/logs
+    networks:
+      - etl-network
+    command: scheduler
+
+  # Backend API service
+  backend:
+    build: ./backend
+    ports:
+      - "5000:5000"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      - MYSQL_USER=root
+      - MYSQL_PASSWORD=${MYSQL_ROOT_PASSWORD:-mysql}
+      - MYSQL_HOST=mysql
+      - MYSQL_PORT=3306
+      - MYSQL_DATABASE=${MYSQL_DATABASE:-retail_data_warehouse}
+    networks:
+      - etl-network
+    restart: on-failure
+
+  # Frontend web service
+  frontend:
+    build: ./frontend
+    ports:
+      - "8050:8050"
+    depends_on:
+      - backend
+    environment:
+      - API_URL=http://backend:5000/api
+    networks:
+      - etl-network
+    restart: on-failure
+
+# Persistent volumes
+volumes:
+  postgres-data:
+  airflow-postgres-data:
+  mysql-data:
+
+# Docker network
+networks:
+  etl-network:
+    driver: bridge
